@@ -56,7 +56,7 @@ There are three stages in the workflow and the first and the second stage differ
     2. Evaluation of the sentiment analysis comparing to the annotated set
         1. Recall, Precision and F-score
 
- ![workflow diagram](media/pipeline.png)
+ ![workflow diagram](media/Pipeline.png)
 
 ## Baseline model and the first results
 
