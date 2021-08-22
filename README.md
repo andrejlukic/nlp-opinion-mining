@@ -99,9 +99,13 @@ The sentiment analyzer implementation has been pretrained on the movie review co
 
 ### Evaluating results of the baseline model
 
+The baseline model is simple, however it should offer some point of comparison. When evaluating the results, each mined feature is compared to the list of features in the annotated dataset. The evaluation is first done on the complete list of features and then also in the per-review basis.
+
 #### Feature mining evaluation
 
-Results of the overall set of features (each feature counted once per product):
+In the feature mining phase the baseline model doesn't very well which was somewhat expected. Here only unigram nouns are considered, not even noun phrases and ignoring any deeper relationships between words. Focus was only on the term frequency / inverse document frequency. The highest recall is at 10% for the Canon G3.
+
+Even here interestingly a notable difference was achieved just by fiddling around with the cutoff values - below the difference between ignoring terms appearing in more than 95% of documents / less than 10% and the best performing values of 80% / 3% resulting in more than double true positives and also more false positives.
 
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -118,6 +122,22 @@ Results of the overall set of features (each feature counted once per product):
 |	MicroMP3.txt	|	8	|	206	|	12	|	0.04	|	0.40	|	0.07	|
 |	Nokia_6600.txt	|	13	|	165	|	5	|	0.07	|	0.72	|	0.13	|
 |	Average values	|	**9.25**	|	**112.67**	|	**7.67**	|	**0.08**	|	**0.59**	|	**0.14**	|
+
+|	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+|	Apex_AD2600_Progressive_scan_DVD player.txt	|	33	|	82	|	52	|	0.29	|	0.39	|	0.33	|
+|	Canon_G3.txt	|	25	|	80	|	61	|	0.24	|	0.29	|	0.26	|
+|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	35	|	153	|	58	|	0.19	|	0.38	|	0.25	|
+|	Nikon_coolpix_4300.txt	|	11	|	64	|	77	|	0.15	|	0.12	|	0.13	|
+|	Nokia_6610.txt	|	27	|	84	|	62	|	0.24	|	0.30	|	0.27	|
+|	Canon_PowerShot_SD500.txt	|	6	|	74	|	2	|	0.07	|	0.75	|	0.14	|
+|	Canon_S100.txt	|	25	|	87	|	45	|	0.22	|	0.36	|	0.27	|
+|	Diaper_Champ.txt	|	17	|	70	|	50	|	0.20	|	0.25	|	0.22	|
+|	Hitachi_router.txt	|	17	|	80	|	31	|	0.18	|	0.35	|	0.23	|
+|	Linksys_Router.txt	|	21	|	80	|	64	|	0.21	|	0.25	|	0.23	|
+|	MicroMP3.txt	|	26	|	188	|	62	|	0.12	|	0.30	|	0.17	|
+|	Nokia_6600.txt	|	34	|	144	|	47	|	0.19	|	0.42	|	0.26	|
+|	Average values	|	**23.08**	|	**98.83**	|	**50.92**	|	**0.19**	|	**0.35**	|	**0.23**	|
 
 Results of detecting features per each line of the product gives a more realistic overview of how the model would perform on real-life data:
 
@@ -139,6 +159,8 @@ Results of detecting features per each line of the product gives a more realisti
 
 #### Sentiment Analysis evaluation
 
+The result of the sentiment analysis is considerably better despite two obvious flaws: using a Naive-Bayes classifier trained on the movie review dataset and not separating sentiment in sentences, that contain more than one feature. The sentiment is calculated per sentence and all features, that were detected in the sentence receive the score:
+
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
 |	Apex_AD2600_Progressive_scan_DVD player.txt	|	45	|	6	|	42	|	0.88	|	0.52	|	0.65	|
@@ -155,15 +177,134 @@ Results of detecting features per each line of the product gives a more realisti
 |	Nokia_6600.txt	|	81	|	13	|	15	|	0.86	|	0.84	|	0.85	|
 |	Average values	|	**57.25**	|	**11.83**	|	**13.50**	|	**0.82**	|	**0.83**	|	**0.82**	|
 
+#### Example of a generated report
+
+After the processing is done a report is generated listing positive and negative features per product (here the resulting list is prunned to only give the first 4 features):
+
+Product:  Nokia_6610.txt
+	
+* Feature:  service
+  * Positive:  11
+  * Negative:  6
+	
+* Feature:  mobile service
+  * Positive:  7
+  * Negative:  2
+	
+* Feature:  feature
+  * Positive:  32
+  * Negative:  5
+	
+* Feature:  phone
+  * Positive:  130
+  * Negative:  38
+	
+
 ## Improving the baseline model
 
-### Mining for the frequent item sets
-+ chunking
-+ apriori
-+ include bigrams and trigrams
-+ expand the TFIDF top list from 20 to 50
+Many small improvements were tested against the baseline model. One of the most obvious ones is including bigrams and trigrams as the feature candidates as well as mining for frequent item sets. The product features are frequently made up of multiple words or phrases so it makes sense to include them as well. Further the product review are messy and full of mistakes so one additional step was introduced, where each word is checked for typos.
+ 
+ ### Spelling correction and extended preprocessing
+ 
+ The spelling corrector in TextBlob was used to attempt to correct the typos in the text of reviews [3]. It attempts to choose the most likely spelling correction for a word that has been edited. An edit can be deletion, swapping (of adjacent letters), replacement or insertion of a letter. One or two edits are considered. The language model is based on about million words from public domain books, Wiktionary and British National Corpus [7].
+ 
+ Part of the improvements were done in the preprocessing step per each review line. The preprocessing pipeline now consists of the following steps:
+
+![preprocessing step diagram](media/preprocess_pipeline.png)
+
+
+Alone adding the spell check, noun phrases / bigrams and trigrams as potential features improved the results by increasing recall by 3% and decreasing precision by 1%:
+
+|	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+|	Apex_AD2600_Progressive_scan_DVD player.txt	|	38	|	77	|	49	|	0.33	|	0.44	|	0.38	|
+|	Canon_G3.txt	|	30	|	75	|	55	|	0.29	|	0.35	|	0.32	|
+|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	45	|	143	|	46	|	0.24	|	0.49	|	0.32	|
+|	Nikon_coolpix_4300.txt	|	21	|	54	|	59	|	0.28	|	0.26	|	0.27	|
+|	Nokia_6610.txt	|	37	|	74	|	52	|	0.33	|	0.42	|	0.37	|
+|	Canon_PowerShot_SD500.txt	|	7	|	73	|	3	|	0.09	|	0.70	|	0.16	|
+|	Canon_S100.txt	|	19	|	93	|	52	|	0.17	|	0.27	|	0.21	|
+|	Diaper_Champ.txt	|	18	|	69	|	60	|	0.21	|	0.23	|	0.22	|
+|	Hitachi_router.txt	|	20	|	77	|	54	|	0.21	|	0.27	|	0.23	|
+|	Linksys_Router.txt	|	21	|	80	|	74	|	0.21	|	0.22	|	0.21	|
+|	MicroMP3.txt	|	30	|	184	|	61	|	0.14	|	0.33	|	0.20	|
+|	Nokia_6600.txt	|	36	|	142	|	56	|	0.20	|	0.39	|	0.27	|
+|	Average values	|	**26.83**	|	**95.08**	|	**51.75**	|	**0.22**	|	**0.36**	|	**0.26**	|
+
+
+
+### Apriori - mining frequent item sets
+
+The next improvement that had the highest impact was introducing the Apriori algorithm [6] to mine for the frequent item sets. Apriori is designed to operate on databases containing transactions (for example, collections of items bought by customers, or details of a website frequentation or IP addresses).[8] In our case the itemset is defined as frequent if it appears in more than 0.3% of the review lines. Apriori was designed to operate on transactions so in the case of the product reviews one transaction equals one review line. The association rule part of the algorithm is ignored and only the frequent item sets are extracted [1]
+
+Including feature candidates mined by the Apriori algorithm considerably improved the results of the feature mining considerably:
+
+|	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+|	Apex_AD2600_Progressive_scan_DVD player.txt	|	45	|	70	|	191	|	0.39	|	0.19	|	0.26	|
+|	Canon_G3.txt	|	51	|	54	|	596	|	0.49	|	0.08	|	0.14	|
+|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	52	|	136	|	135	|	0.28	|	0.28	|	0.28	|
+|	Nikon_coolpix_4300.txt	|	32	|	43	|	291	|	0.43	|	0.10	|	0.16	|
+|	Nokia_6610.txt	|	54	|	57	|	349	|	0.49	|	0.13	|	0.21	|
+|	Average values	|	**46.80**	|	**72.00**	|	**312.40**	|	**0.41**	|	**0.16**	|	**0.21**	|
+
+In the upper table only the first 6 products are included due to prolonged time of computing required due to the Apriori algorithm. For comparison purposes here is again the table from before (without frequent item sets mining) just for these six products:
+
+|	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+|	Apex_AD2600_Progressive_scan_DVD player.txt	|	38	|	77	|	49	|	0.33	|	0.44	|	0.38	|
+|	Canon_G3.txt	|	30	|	75	|	55	|	0.29	|	0.35	|	0.32	|
+|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	45	|	143	|	46	|	0.24	|	0.49	|	0.32	|
+|	Nikon_coolpix_4300.txt	|	21	|	54	|	59	|	0.28	|	0.26	|	0.27	|
+|	Nokia_6610.txt	|	37	|	74	|	52	|	0.33	|	0.42	|	0.37	|
+|	Average values	|	**34.20**	|	**84.60**	|	**52.20**	|	**0.29**	|	**0.39**	|	**0.33**	|
+
+By comparing these two tables it can be seen the increase of recall by roughly 12% by including the frequent item sets.
+
+### Removing useless features
+
+Feature prunning step was introduced after the feature mining step to remove extra features that make little sense.
+
+#### Redundancy prunning
+ 
+All the features are first separated on the base of the number of words they consist of. Single word features are considered to be a general version of the multiple word features if the multiple word feature contains the single word feature. As per [1] the features are prunned based on their p-support, ie the number of times they occur in sentences on their own.
+
+### Compactness prunning
+
+Features from the Apriori frequent item set mining could be combination of words otherwise relatively far apart in a sentence. These kind of features might not be the best candidates so they are removed. The approach for prunning those features that are not "compact" is taken from [1] and distance of 3 words in at least two sentences is reused.
 
 ## Appendix
+
+### Source code quick guide
+
+All of the source code is available in the accompanying  [Jupyter notebook](./EDA final.ipynb)
+
+#### Corpus, Review, Sentence representation
+
+The classes are defined under the section names Internal state of the model. There are three classes:
+1. PSent
+2. PRev (most of preprocessing pipeline is here)
+3. PReviews (feature mining, prunning, opinion words, evaluations)
+ 
+ Each of these classes represents a review line, a review and a corpus of reviews accordingly.
+
+#### Preprocessing pipeline
+
+The preprocessing takes place inside the PRev class in the preprocess() method. Spelling, stemming, chunking and lemmatization can be controlled via the input parameters.
+
+#### Product Feature mining
+
+The feature mining is split between the simple TFIDF keyword extraction and the frequent itemsets mining by the Apriori algorithm:
+1. features() in PReviews class 
+2. get_tfidf_top_features() in PReviews class 
+3. _tag_sentences_with_features() in PReviews class 
+
+#### Product Feature prunning
+
+The feature prunning is split between the redundancy and the compactness prunning and some additional heuristics included in the method prunning method:
+
+1. feature_prunning() in PReviews class 
+2. compactness_prunning() in PReviews class 
   
 ### TextBlob PatternTagger supported POS tags
 
@@ -217,3 +358,6 @@ WRB wh-abverb where, when
   [3] https://textblob.readthedocs.io/en/dev/ "TextBlob: Simplified Text Processing"
   [4] https://textblob.readthedocs.io/en/dev/advanced_usage.html "TextBlob Advanced Usage" 
   [5] https://github.com/sloria/TextBlob/blob/e75a54ebe02d4f360fb2ebfde2741135209a8ede/textblob/en/sentiments.py "TextBlob Sentiment Analyzer Source Code"
+  [6] https://pypi.org/project/apyori/ "Apyori implementation of Apriori algorithm"
+  [7] https://norvig.com/spell-correct.html "Peter Norvig, 2007, How to Write a Spelling Corrector"
+  [8] https://en.wikipedia.org/wiki/Apriori_algorithm "Apriori algorithm"
