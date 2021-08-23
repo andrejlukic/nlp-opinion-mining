@@ -1,5 +1,7 @@
 # Opinion mining
 
+The goal of this project is to mine user opinions about certain product features. The task will use a dataset of user reviews of several Amazon products. The goal is to analyze the reviews, extract product features and calculate sentiment per each feature. All the discussed source code is included in a [Jupyter notebook](./opinion_mining.ipynb) and briefly described in an appendix of this document. This document is structured in the following way: quick look at the datasets, overview of the solution architecture, baseline model with the first results and finally the improved model and comparison with the baseline model. In the appendix there are some pointers with regards to the source code and some additional complementary information.
+
 ## The first look at the data
 
 The data is a collection of customer reviews, extracted from Amazon. Reviews for individual products are grouped in files and each file has been manually labelled with the list of product features, sentiment polarity and sentiment strength. Each file contains reviews for one specific product or domain. 
@@ -48,7 +50,7 @@ There are three stages in the workflow and the first and the second stage differ
     1. Product feature mining include single or multiple steps from this list:
         1. Keyword extraction based on TFIDF
         2. Frequent item sets (Apriori algorithm)
-        3. Feature pruning according to rules and heuristics
+        3. Feature pruning according to compactness, redundancy and heuristics
 3. Deployment and evaluation of results
     1. Evaluation of the feature mining comparing to the annotated set
         1. Recall, Precision and F-score per sentence
@@ -60,34 +62,39 @@ There are three stages in the workflow and the first and the second stage differ
 
 ## Baseline model and the first results
 
-To establish a point of comparison a baseline model has been built with the basic subset of the aforementioned steps. The baseline model has been run on multiple products to collect results of mining for the product features and sentiment analysis.
+To get the first feel of the task ahead and establish a point of comparison a baseline model has been built. It uses the basic subset of the aforementioned steps. This model has been then tested on multiple product datasets and the success has been evaluated and reported at the end of this section.
+
+The main components of the baseline model can be seen on this diagram:
 
 ![workflow diagram](media/baseline.png)
 
 ### Preprocessing
 
-In the baseline model the preprocessing pipeline is clean and as simple as possible:
+The preprocessing pipeline is clean and as simple as possible with three main steps (and smaller steps described below):
+
+![workflow diagram](media/preprocess_pipeline_basic.png)
 
 #### Tokenization 
 Since the NLTK review module is used the product reviews already come partially preprocessed. Each review is split by sentence and the words are tokenized. The default split and tokenization was left as is.
+
 #### Part-of-speech tagging
-For tagging parts of speech two different taggers were tried and the TextBlob PatternTagger[4] was chosen since it performed very well. The list of supported tags are available in the appendix section.
+ For tagging parts of speech two different taggers were tried and the TextBlob PatternTagger[4] was chosen since it performed very well. The list of supported tags are available in the appendix section.
 
 #### Extraction of nouns
-Since product features are usually nouns or noun phrases in review sentences [1] all parts of speech are dropped in this stage and only nouns retained. 
+In the second step (nouns) POS tagging is used to extract nouns from the sentence. The logic behind it is that the product features are mostly nouns or noun phrases (and rarely verbs, adverbs and other parts of the speech). Nouns are extracted out of the text and stored separately for each of the product lines.  [1] Other parts of speech are dropped in this stage. 
 
 The following POS entities indicate the nouns:
-    1. NN noun, singular ‘desk’
-    2. NNS noun plural ‘desks’
-    3. NNP proper noun, singular ‘Harrison’
-    4. NNPS proper noun, plural ‘Americans’ 
+* NN noun, singular ‘desk’
+* NNS noun plural ‘desks’
+* NNP proper noun, singular ‘Harrison’
+* NNPS proper noun, plural ‘Americans’ 
     
 #### Prunning short words
-Most of the very short words are various pronouns, typos and abbreviations. In this stage words that are shorter than 3 characters are removed. 
+Most of the very short words are various pronouns, typos and abbreviations. These will less likely present product features so all the words that are shorter than 3 characters are removed. This also has a slightly negative effect of prunning potential multi-word feature names indicating product types for example (Canon G3 camera) however the benefit was still greater than the loss of recall.
     
 ### Mining for the product features
 
-A matrix of TF-IDF features is used to retain only the relevant keywords, potential product features candidates. For the baseline model those unigrams are considered that appear in at least 10% of reviews and not more that 90% of reviews. The SciKit's TfidfVectorizer implementation is used to construct the feature matrix.
+For the first attempt at mining for the product features a simple term frequency approach was used. Considering each review to be one document a matrix of TF-IDF values was generated for all the nouns in the review dataset. Then the top N terms with the highest TFIDF value were picked as potential product features candidates. In the baseline model only unigrams were considered when building the TFIDF matrix and each term had to appear in at least 3% of reviews and not more that 80% of reviews. Several settings were tested and these values proved to be optimal accross the list of the given test products. The SciKit's TfidfVectorizer implementation was used to construct the feature matrix and a separate function to extract the top N features. Various
 
 After the features are extracted all review sentences containing one or multiple features are tagged.
 
@@ -99,13 +106,15 @@ The sentiment analyzer implementation has been pretrained on the movie review co
 
 ### Evaluating results of the baseline model
 
-The baseline model is simple, however it should offer some point of comparison. When evaluating the results, each mined feature is compared to the list of features in the annotated dataset. The evaluation is first done on the complete list of features and then also in the per-review basis.
+The baseline model is simple, however it should offer some point of comparison. When evaluating the results, each mined feature is compared to the list of features in the annotated dataset. The evaluation is first done on the complete list of features and then also in the per-review basis. The mined features have to exactly match the annotated features, otherwise it does not count. This reduces the success of the model somewhat since there are many occasions where word order is inverted and thus the recall is lower as 
 
 #### Feature mining evaluation
 
-In the feature mining phase the baseline model doesn't very well which was somewhat expected. Here only unigram nouns are considered, not even noun phrases and ignoring any deeper relationships between words. Focus was only on the term frequency / inverse document frequency. The highest recall is at 10% for the Canon G3.
+In the feature mining phase the baseline model didn't do very well which was somewhat expected. Here only unigram nouns are considered, not even noun phrases and any deeper relationships between words were ignored. The focus was solely on the term frequency / inverse document frequency.
 
-Even here interestingly a notable difference was achieved just by fiddling around with the cutoff values - below the difference between ignoring terms appearing in more than 95% of documents / less than 10% and the best performing values of 80% / 3% resulting in more than double true positives and also more false positives.
+Even here interestingly a notable difference was achieved just by fiddling around with the cutoff values for the TFIDF matrix - below the difference between ignoring terms appearing in more than 95% of documents / less than 10% and the best performing values of 80% / 3% resulting in more than double true positives and also more false positives.
+
+TFIDF max_df=0.95, min_df=0.1
 
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -123,6 +132,8 @@ Even here interestingly a notable difference was achieved just by fiddling aroun
 |	Nokia_6600.txt	|	13	|	165	|	5	|	0.07	|	0.72	|	0.13	|
 |	Average values	|	**9.25**	|	**112.67**	|	**7.67**	|	**0.08**	|	**0.59**	|	**0.14**	|
 
+TFIDF max_df=0.8, min_df=0.03
+
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
 |	Apex_AD2600_Progressive_scan_DVD player.txt	|	33	|	82	|	52	|	0.29	|	0.39	|	0.33	|
@@ -139,27 +150,30 @@ Even here interestingly a notable difference was achieved just by fiddling aroun
 |	Nokia_6600.txt	|	34	|	144	|	47	|	0.19	|	0.42	|	0.26	|
 |	Average values	|	**23.08**	|	**98.83**	|	**50.92**	|	**0.19**	|	**0.35**	|	**0.23**	|
 
-Results of detecting features per each line of the product gives a more realistic overview of how the model would perform on real-life data:
+Results of detecting features per each line of the product gives a more realistic overview of how the model would perform on real-life data. Here each sentence was counted separately into the final statistic so that if certain feature was more common it had a greater effect on the final result. This result tells less about success of the feature mining but gives a slightly more realistic view of the expected performance in real-life applications where the certain features might be more prominent than others:
 
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-|	Apex_AD2600_Progressive_scan_DVD player.txt	|	93	|	337	|	430	|	0.22	|	0.18	|	0.20	|
-|	Canon_G3.txt	|	65	|	220	|	533	|	0.23	|	0.11	|	0.15	|
-|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	231	|	614	|	1260	|	0.27	|	0.15	|	0.20	|
-|	Nikon_coolpix_4300.txt	|	46	|	157	|	343	|	0.23	|	0.12	|	0.16	|
-|	Nokia_6610.txt	|	106	|	232	|	381	|	0.31	|	0.22	|	0.26	|
-|	Canon_PowerShot_SD500.txt	|	39	|	109	|	92	|	0.26	|	0.30	|	0.28	|
-|	Canon_S100.txt	|	52	|	170	|	173	|	0.23	|	0.23	|	0.23	|
-|	Diaper_Champ.txt	|	45	|	193	|	377	|	0.19	|	0.11	|	0.14	|
-|	Hitachi_router.txt	|	84	|	181	|	261	|	0.32	|	0.24	|	0.28	|
-|	Linksys_Router.txt	|	56	|	162	|	394	|	0.26	|	0.12	|	0.17	|
-|	MicroMP3.txt	|	65	|	516	|	502	|	0.11	|	0.11	|	0.11	|
-|	Nokia_6600.txt	|	109	|	348	|	336	|	0.24	|	0.24	|	0.24	|
-|	Average values	|	**82.58**	|	**269.92**	|	**423.50**	|	**0.24**	|	**0.18**	|	**0.20**	|
+|	Apex_AD2600_Progressive_scan_DVD player.txt	|	128	|	302	|	1060	|	0.30	|	0.11	|	0.16	|
+|	Canon_G3.txt	|	90	|	195	|	962	|	0.32	|	0.09	|	0.13	|
+|	Creative_Labs_Nomad_Jukebox_Zen_Xtra_40GB.txt	|	323	|	522	|	2502	|	0.38	|	0.11	|	0.18	|
+|	Nikon_coolpix_4300.txt	|	57	|	146	|	611	|	0.28	|	0.09	|	0.13	|
+|	Nokia_6610.txt	|	90	|	248	|	598	|	0.27	|	0.13	|	0.18	|
+|	Canon_PowerShot_SD500.txt	|	43	|	105	|	122	|	0.29	|	0.26	|	0.27	|
+|	Canon_S100.txt	|	90	|	132	|	383	|	0.41	|	0.19	|	0.26	|
+|	Diaper_Champ.txt	|	67	|	171	|	565	|	0.28	|	0.11	|	0.15	|
+|	Hitachi_router.txt	|	91	|	174	|	309	|	0.34	|	0.23	|	0.27	|
+|	Linksys_Router.txt	|	85	|	133	|	792	|	0.39	|	0.10	|	0.16	|
+|	MicroMP3.txt	|	129	|	452	|	1177	|	0.22	|	0.10	|	0.14	|
+|	Nokia_6600.txt	|	165	|	292	|	637	|	0.36	|	0.21	|	0.26	|
+|	Average values	|	**113.17**	|	**239.33**	|	**809.83**	|	**0.32**	|	**0.14**	|	**0.19**	|
 
 #### Sentiment Analysis evaluation
 
-The result of the sentiment analysis is considerably better despite two obvious flaws: using a Naive-Bayes classifier trained on the movie review dataset and not separating sentiment in sentences, that contain more than one feature. The sentiment is calculated per sentence and all features, that were detected in the sentence receive the score:
+The result of the sentiment analysis shows considerably better results than the mining for the product features. The results could still be improved since this approach has two obvious flaws: 
+* it is using a Naive-Bayes classifier trained on the movie review dataset.
+* sentiment is calculated per whole sentence even when a sentence contains more than one feature. For example, if two separate features (flash, lens) are found in a sentence the sentiment is assigned to them both 
+
 
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -177,9 +191,10 @@ The result of the sentiment analysis is considerably better despite two obvious 
 |	Nokia_6600.txt	|	81	|	13	|	15	|	0.86	|	0.84	|	0.85	|
 |	Average values	|	**57.25**	|	**11.83**	|	**13.50**	|	**0.82**	|	**0.83**	|	**0.82**	|
 
+
 #### Example of a generated report
 
-After the processing is done a report is generated listing positive and negative features per product (here the resulting list is prunned to only give the first 4 features):
+After the processing is done a report is generated listing positive and negative features per product. The report is sorted by the most reviews per feature and prunned to display only the first N features (this can be changed). Here the resulting list is prunned to only give the first 4 features:
 
 Product:  Nokia_6610.txt
 	
@@ -202,7 +217,7 @@ Product:  Nokia_6610.txt
 
 ## Improving the baseline model
 
-Many small improvements were tested against the baseline model. One of the most obvious ones is including bigrams and trigrams as the feature candidates as well as mining for frequent item sets. The product features are frequently made up of multiple words or phrases so it makes sense to include them as well. Further the product review are messy and full of mistakes so one additional step was introduced, where each word is checked for typos.
+Many small improvements were tested against the baseline model. One of the most obvious ones is including bigrams and trigrams as the feature candidates. The product features are frequently made up of multiple words or phrases, e.g. camera lens, flash mount, battery life, so it makes sense to include them as well. However this introduces new challenges with distinguishing between more general and specific versions of the same feature. This is tackled in the feature prunning stage, which has been added after the feature mining step. Mining for the frequent item sets was also added and is discussed in more detail in a separate section. And lastly the product review are messy and full of mistakes so one additional step was introduced, where each word is checked for typos in the preprocessing stage.
  
  ### Spelling correction and extended preprocessing
  
@@ -248,7 +263,7 @@ Including feature candidates mined by the Apriori algorithm considerably improve
 |	Nokia_6610.txt	|	54	|	57	|	349	|	0.49	|	0.13	|	0.21	|
 |	Average values	|	**46.80**	|	**72.00**	|	**312.40**	|	**0.41**	|	**0.16**	|	**0.21**	|
 
-In the upper table only the first 6 products are included due to prolonged time of computing required due to the Apriori algorithm. For comparison purposes here is again the table from before (without frequent item sets mining) just for these six products:
+In the upper table only the first 6 products were included due to increased time of computing required due to the Apriori algorithm. For easier comparison the table from before (without frequent item sets mining) is included just for these six products:
 
 |	Name	|	TP	|	FN	|	FP	|	Recall	|	Precision	|	F-score	|
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -259,25 +274,25 @@ In the upper table only the first 6 products are included due to prolonged time 
 |	Nokia_6610.txt	|	37	|	74	|	52	|	0.33	|	0.42	|	0.37	|
 |	Average values	|	**34.20**	|	**84.60**	|	**52.20**	|	**0.29**	|	**0.39**	|	**0.33**	|
 
-By comparing these two tables it can be seen the increase of recall by roughly 12% by including the frequent item sets.
+By comparing these two tables it can be seen the increase of recall by roughly 12% by including the frequent item sets. Adding the frequent item sets doesn't consider the position of a word in a sentence and this poses a new challenge of prunning the feature candidates that have little sense. Some words combinations returned by the Apriori will not be sensible and the best way to remove the is the feature prunning approach discussed in the following section. 
 
 ### Removing useless features
 
-Feature prunning step was introduced after the feature mining step to remove extra features that make little sense.
+After adding bigrams and trigram as well as the frequent item sets there are many redundant and weird looking feature candidates that need to be removed. For this reason a new prunning step has been added in the improved model that runs after the feature mining has collected the feature candidates and attempts to reduce the amount of bad feature candidates. Using the two methods below approximatelly 23% of feature candidates get removed.
 
 #### Redundancy prunning
  
-All the features are first separated on the base of the number of words they consist of. Single word features are considered to be a general version of the multiple word features if the multiple word feature contains the single word feature. As per [1] the features are prunned based on their p-support, ie the number of times they occur in sentences on their own.
+All the features are first separated on the base of the number of words they consist of. Single word features are considered to be a general version of the multiple word features if the multiple word feature contains the single word feature. For example a digital camera might indicate the same feature as camera in specific cases. In other cases the general word will have no sense at all as in the case of batter life vs life. Here the approach described in [1] was followed and the features were prunned based on their p-support, ie the number of times they occur in sentences on their own vs with another feature. 
 
 ### Compactness prunning
 
-Features from the Apriori frequent item set mining could be combination of words otherwise relatively far apart in a sentence. These kind of features might not be the best candidates so they are removed. The approach for prunning those features that are not "compact" is taken from [1] and distance of 3 words in at least two sentences is reused.
+Features from the Apriori frequent item set mining could be combination of words that are otherwise relatively far apart in a sentence. These kind of features might not be the best candidates so they are also removed. The main criterium is the distance of the words in an original sentence. If the distance is too long then the feature is considered not compact. Since features can occure more than once in the same sentence all possible distances were calculated and then the minimum distance is considered. The treshold for prunning those features that are not "compact" is taken from [1] and distance of 3 words in at least two sentences is reused.
 
 ## Appendix
 
 ### Source code quick guide
 
-All of the source code is available in the accompanying  [Jupyter notebook](./EDA final.ipynb)
+All of the source code is available in the accompanying  [Jupyter notebook](./opinion_mining.ipynb)
 
 #### Corpus, Review, Sentence representation
 
@@ -348,16 +363,11 @@ WRB wh-abverb where, when
 
   
   
-## Product feature extraction
-  
-  - focusing on the explicitely mentioned features since the implicite ones are more rare.[1]
-  
-  
-  [1] https://www.cs.uic.edu/~liub/publications/aaai04-featureExtract.pdf "Liu, Hu, Mining Opinion Features in Customer Reviews"
-  [2] https://www.nltk.org/howto/corpus.html "NLTK product reviews corpus"
-  [3] https://textblob.readthedocs.io/en/dev/ "TextBlob: Simplified Text Processing"
-  [4] https://textblob.readthedocs.io/en/dev/advanced_usage.html "TextBlob Advanced Usage" 
-  [5] https://github.com/sloria/TextBlob/blob/e75a54ebe02d4f360fb2ebfde2741135209a8ede/textblob/en/sentiments.py "TextBlob Sentiment Analyzer Source Code"
-  [6] https://pypi.org/project/apyori/ "Apyori implementation of Apriori algorithm"
-  [7] https://norvig.com/spell-correct.html "Peter Norvig, 2007, How to Write a Spelling Corrector"
-  [8] https://en.wikipedia.org/wiki/Apriori_algorithm "Apriori algorithm"
+  [1]: https://www.cs.uic.edu/~liub/publications/aaai04-featureExtract.pdf "Liu, Hu, Mining Opinion Features in Customer Reviews"
+  [2]: https://www.nltk.org/howto/corpus.html "NLTK product reviews corpus"
+  [3]: https://textblob.readthedocs.io/en/dev/ "TextBlob: Simplified Text Processing"
+  [4]: https://textblob.readthedocs.io/en/dev/advanced_usage.html "TextBlob Advanced Usage" 
+  [5]: https://github.com/sloria/TextBlob/blob/e75a54ebe02d4f360fb2ebfde2741135209a8ede/textblob/en/sentiments.py "TextBlob Sentiment Analyzer Source Code"
+  [6]: https://pypi.org/project/apyori/ "Apyori implementation of Apriori algorithm"
+  [7]: https://norvig.com/spell-correct.html "Peter Norvig, 2007, How to Write a Spelling Corrector"
+  [8]: https://en.wikipedia.org/wiki/Apriori_algorithm "Apriori algorithm"
